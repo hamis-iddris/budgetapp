@@ -1,104 +1,46 @@
-from typing import Union, List, Optional
+import streamlit as st
+import json
 from datetime import datetime
+from typing import List, Dict, Union
 
+
+# ==========================================
+# 1. YOUR ORIGINAL CATEGORY CLASS (Improved)
+# ==========================================
 
 class Category:
-    """
-    A budget category that tracks deposits, withdrawals, and transfers.
-
-    Attributes:
-        name (str): The name of the category
-        ledger (list): List of transaction dictionaries
-    """
-
     def __init__(self, name: str):
-        """
-        Initialize a new Category instance.
-
-        Args:
-            name (str): The name of the category
-        """
         self.name = name
         self.ledger: List[dict] = []
-        self._balance: float = 0.0  # Cached balance for performance
+        self._balance: float = 0.0
 
     def deposit(self, amount: Union[int, float], description: str = "") -> None:
-        """
-        Add a deposit to the ledger.
-
-        Args:
-            amount (float): Positive amount to deposit
-            description (str): Optional description of the transaction
-
-        Raises:
-            ValueError: If amount is negative or not a number
-        """
-        if not isinstance(amount, (int, float)):
-            raise TypeError("Amount must be a number")
-        if amount < 0:
-            raise ValueError("Amount must be non-negative")
-
+        if not isinstance(amount, (int, float)) or amount < 0:
+            raise ValueError("Amount must be a non-negative number")
         self.ledger.append({
             'amount': float(amount),
             'description': description,
-            'date': datetime.now().strftime("%Y-%m-%d")  # Bonus: date tracking
+            'date': datetime.now().strftime("%Y-%m-%d %H:%M")
         })
         self._balance += float(amount)
 
     def withdraw(self, amount: Union[int, float], description: str = "") -> bool:
-        """
-        Add a withdrawal to the ledger if sufficient funds exist.
-
-        Args:
-            amount (float): Positive amount to withdraw
-            description (str): Optional description of the transaction
-
-        Returns:
-            bool: True if withdrawal succeeded, False otherwise
-        """
-        if not isinstance(amount, (int, float)):
+        if not isinstance(amount, (int, float)) or amount < 0:
             return False
-        if amount < 0:
-            return False
-
         if self.check_funds(amount):
             self.ledger.append({
                 'amount': -float(amount),
                 'description': description,
-                'date': datetime.now().strftime("%Y-%m-%d")
+                'date': datetime.now().strftime("%Y-%m-%d %H:%M")
             })
             self._balance -= float(amount)
             return True
         return False
 
     def get_balance(self) -> float:
-        """
-        Calculate and return the current balance.
-
-        Returns:
-            float: Current balance of the category
-        """
-        # Use cached balance for performance
-        # If you need to recalculate (e.g., after manual ledger edits):
-        # return sum(item['amount'] for item in self.ledger)
         return self._balance
 
     def transfer(self, amount: Union[int, float], category: 'Category') -> bool:
-        """
-        Transfer funds from this category to another.
-
-        Args:
-            amount (float): Amount to transfer
-            category (Category): Destination category
-
-        Returns:
-            bool: True if transfer succeeded, False otherwise
-        """
-        if not isinstance(amount, (int, float)) or amount < 0:
-            return False
-        if not isinstance(category, Category):
-            raise TypeError("Transfer target must be a Category instance")
-
         if self.check_funds(amount):
             self.withdraw(amount, f"Transfer to {category.name}")
             category.deposit(amount, f"Transfer from {self.name}")
@@ -106,252 +48,193 @@ class Category:
         return False
 
     def check_funds(self, amount: Union[int, float]) -> bool:
-        """
-        Check if the category has sufficient funds for a transaction.
-
-        Args:
-            amount (float): Amount to check
-
-        Returns:
-            bool: True if funds are sufficient, False otherwise
-        """
         return amount <= self.get_balance()
 
-    def get_withdrawals(self) -> List[dict]:
-        """
-        Get all withdrawal transactions from the ledger.
+    def to_dict(self) -> dict:
+        """Serialize category for JSON saving"""
+        return {'name': self.name, 'ledger': self.ledger, '_balance': self._balance}
 
-        Returns:
-            list: List of withdrawal transaction dictionaries
-        """
-        return [item for item in self.ledger if item['amount'] < 0]
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Category':
+        """Deserialize category from JSON"""
+        cat = cls(data['name'])
+        cat.ledger = data['ledger']
+        cat._balance = data['_balance']
+        return cat
 
-    def __str__(self) -> str:
-        """
-        Return a formatted string representation of the category ledger.
 
-        Returns:
-            str: Formatted ledger output
-        """
-        title = f"{self.name:*^30}\n"
-        items = ""
-
-        for transaction in self.ledger:
-            # Truncate description to 23 chars for formatting
-            description = f"{transaction['description'][:23]:<23}"
-            amount = f"{transaction['amount']:>7.2f}"
-            items += f"{description}{amount}\n"
-
-        total = f"Total: {self.get_balance():.2f}"
-        return title + items + total
-
-    def __repr__(self) -> str:
-        """
-        Return a developer-friendly representation of the Category.
-
-        Returns:
-            str: Repr string with name and balance
-        """
-        return f"Category('{self.name}', balance={self.get_balance():.2f})"
-
+# ==========================================
+# 2. HELPER FUNCTIONS
+# ==========================================
 
 def create_spend_chart(categories: List[Category]) -> str:
-    """
-    Create a horizontal bar chart showing percentage spent by category.
-
-    Args:
-        categories (list): List of Category objects to analyze
-
-    Returns:
-        str: Formatted chart string ready for printing
-    """
-    # Handle empty input
+    """Original ASCII chart function"""
     if not categories:
-        return "Percentage spent by category\n"
+        return "No categories to display."
 
-    # Calculate total withdrawals for each category
-    spends = []
-    for cat in categories:
-        spend = sum(abs(item['amount']) for item in cat.ledger if item['amount'] < 0)
-        spends.append(spend)
-
-    # Calculate total spent across all categories
+    spends = [sum(abs(item['amount']) for item in cat.ledger if item['amount'] < 0) for cat in categories]
     total_spend = sum(spends)
+    percentages = [int((s / total_spend) * 100 // 10) * 10 if total_spend > 0 else 0 for s in spends]
 
-    # Calculate percentages (rounded down to nearest 10)
-    percentages = []
-    for spend in spends:
-        if total_spend == 0:
-            percentages.append(0)
-        else:
-            pct = (spend / total_spend) * 100
-            percentages.append(int(pct // 10) * 10)
-
-    # Build the chart string
     chart = "Percentage spent by category\n"
-
-    # Y-axis labels and bars (100 down to 0 in steps of 10)
     for i in range(100, -1, -10):
         label = str(i).rjust(3) + "| "
         row = label
         for pct in percentages:
-            if pct >= i:
-                row += "o  "
-            else:
-                row += "   "
-        chart += row.rstrip() + "\n"
+            row += "o  " if pct >= i else "   "
+        chart += row + "\n"
 
-    # Horizontal line (4 spaces indent + dashes)
     chart += "    " + "-" * (len(categories) * 3 + 1) + "\n"
-
-    # Category names vertically below the bar
     max_len = max(len(cat.name) for cat in categories)
-
     for i in range(max_len):
-        row = "     "  # 5 spaces indent to align with bars
+        row = "     "
         for cat in categories:
-            if i < len(cat.name):
-                row += cat.name[i] + "  "
-            else:
-                row += "   "
-        chart += row.rstrip() + "\n"
-
-    # Remove only the final newline character
-    return chart.rstrip("\n")
+            row += (cat.name[i] if i < len(cat.name) else " ") + "  "
+        chart += row + "\n"
+    return chart
 
 
-# ============= UTILITY FUNCTIONS =============
-
-def export_to_csv(category: Category, filename: Optional[str] = None) -> str:
-    """
-    Export a category's ledger to CSV format.
-
-    Args:
-        category (Category): The category to export
-        filename (str, optional): If provided, saves to file
-
-    Returns:
-        str: CSV formatted string
-    """
-    csv_lines = ["date,amount,description"]
-    for item in category.ledger:
-        date = item.get('date', '')
-        amount = item['amount']
-        desc = item['description'].replace(',', ';')  # Escape commas
-        csv_lines.append(f"{date},{amount:.2f},{desc}")
-
-    csv_content = "\n".join(csv_lines)
-
-    if filename:
-        with open(filename, 'w') as f:
-            f.write(csv_content)
-
-    return csv_content
+def save_data(categories: Dict[str, Category]) -> None:
+    """Save categories to JSON file"""
+    data = {name: cat.to_dict() for name, cat in categories.items()}
+    with open("budget_data.json", "w") as f:
+        json.dump(data, f, indent=2)
 
 
-# ============= TEST SUITE =============
-
-def run_tests():
-    """Run basic unit tests to verify functionality."""
-    print("🧪 Running tests...\n")
-
-    # Test 1: Deposit and balance
-    food = Category("Food")
-    food.deposit(100, "initial")
-    assert food.get_balance() == 100.0, "❌ Deposit test failed"
-    print("✅ Deposit and balance test passed")
-
-    # Test 2: Withdraw with sufficient funds
-    success = food.withdraw(30, "groceries")
-    assert success == True, "❌ Withdraw success test failed"
-    assert food.get_balance() == 70.0, "❌ Balance after withdraw failed"
-    print("✅ Withdraw with sufficient funds test passed")
-
-    # Test 3: Withdraw with insufficient funds
-    success = food.withdraw(100, "overspend")
-    assert success == False, "❌ Withdraw failure test failed"
-    assert food.get_balance() == 70.0, "❌ Balance should not change on failed withdraw"
-    print("✅ Withdraw with insufficient funds test passed")
-
-    # Test 4: Transfer between categories
-    entertainment = Category("Entertainment")
-    entertainment.deposit(50)
-    assert food.transfer(20, entertainment) == True, "❌ Transfer success test failed"
-    assert food.get_balance() == 50.0, "❌ Food balance after transfer failed"
-    assert entertainment.get_balance() == 70.0, "❌ Entertainment balance after transfer failed"
-    print("✅ Transfer test passed")
-
-    # Test 5: Check ledger descriptions for transfers
-    transfer_descriptions = [item['description'] for item in food.ledger if 'Transfer' in item['description']]
-    assert any("Transfer to Entertainment" in desc for desc in
-               transfer_descriptions), "❌ Transfer description in source failed"
-    print("✅ Transfer description test passed")
-
-    # Test 6: Input validation
+def load_data() -> Dict[str, Category]:
+    """Load categories from JSON file"""
     try:
-        food.deposit(-10, "invalid")
-        assert False, "❌ Should have raised ValueError for negative deposit"
-    except ValueError:
-        print("✅ Negative deposit validation test passed")
-
-    # Test 7: create_spend_chart with sample data
-    auto = Category("Auto")
-    auto.deposit(1000)
-    auto.withdraw(300, "gas")
-    auto.withdraw(200, "maintenance")
-
-    chart = create_spend_chart([food, entertainment, auto])
-    assert "Percentage spent by category" in chart, "❌ Chart title missing"
-    assert "Food" in chart and "Entertainment" in chart and "Auto" in chart, "❌ Category names missing from chart"
-    print("✅ Spend chart generation test passed")
-
-    # Test 8: Empty categories list
-    empty_chart = create_spend_chart([])
-    assert empty_chart == "Percentage spent by category\n", "❌ Empty chart handling failed"
-    print("✅ Empty categories chart test passed")
-
-    print("\n🎉 All tests passed!")
+        with open("budget_data.json", "r") as f:
+            data = json.load(f)
+        return {name: Category.from_dict(cat_data) for name, cat_data in data.items()}
+    except FileNotFoundError:
+        return {}
 
 
-# ============= DEMO / USAGE EXAMPLE =============
+# ==========================================
+# 3. STREAMLIT UI
+# ==========================================
 
-if __name__ == "__main__":
-    # Create categories
-    food = Category("Food")
-    entertainment = Category("Entertainment")
-    auto = Category("Auto")
+st.set_page_config(page_title="Budget App", page_icon="💰")
+st.title("💰 Personal Budget App")
 
-    # Add transactions
-    food.deposit(900, "deposit")
-    food.deposit(45.56, "bonus")
-    food.withdraw(34.06, "groceries")
-    food.withdraw(21.89, "restaurant")
+# Initialize Session State
+if 'categories' not in st.session_state:
+    st.session_state.categories = load_data()  # Load from JSON on start
 
-    entertainment.deposit(200, "initial")
-    entertainment.withdraw(50, "movies")
-    entertainment.withdraw(30, "concert")
+# Sidebar Navigation
+menu = st.sidebar.selectbox("Menu", ["Dashboard", "Add Category", "Add Transaction", "View Reports", "Save/Load Data"])
 
-    auto.deposit(500, "initial")
-    auto.withdraw(150, "gas")
-    auto.withdraw(75.50, "oil change")
+# --- DASHBOARD ---
+if menu == "Dashboard":
+    st.header("Overview")
+    if not st.session_state.categories:
+        st.info("No categories yet. Go to 'Add Category' to start!")
+    else:
+        cols = st.columns(len(st.session_state.categories))
+        for idx, (name, cat) in enumerate(st.session_state.categories.items()):
+            with cols[idx % len(cols)]:
+                st.metric(label=name, value=f"${cat.get_balance():.2f}")
 
-    # Transfer between categories
-    food.transfer(50, entertainment)
+        # Show recent transactions across all categories
+        st.subheader("Recent Transactions")
+        all_transactions = []
+        for cat in st.session_state.categories.values():
+            for item in cat.ledger[-5:]:  # Last 5 transactions
+                all_transactions.append({
+                    "Category": cat.name,
+                    "Description": item['description'],
+                    "Amount": item['amount'],
+                    "Date": item.get('date', 'N/A')
+                })
+        if all_transactions:
+            st.dataframe(all_transactions, use_container_width=True)
 
-    # Print individual category ledgers
-    print(food)
-    print("\n" + "=" * 30 + "\n")
-    print(entertainment)
-    print("\n" + "=" * 30 + "\n")
-    print(auto)
+# --- ADD CATEGORY ---
+elif menu == "Add Category":
+    st.header("Create New Category")
+    new_cat_name = st.text_input("Category Name (e.g., Food, Rent)")
+    if st.button("Create Category"):
+        if new_cat_name and new_cat_name not in st.session_state.categories:
+            st.session_state.categories[new_cat_name] = Category(new_cat_name)
+            st.success(f"Category '{new_cat_name}' created!")
+            st.rerun()
+        elif new_cat_name in st.session_state.categories:
+            st.error("Category already exists!")
+        else:
+            st.error("Please enter a name.")
 
-    # Print spend chart
-    print("\n" + "=" * 30 + "\n")
-    print(create_spend_chart([food, entertainment, auto]))
+# --- ADD TRANSACTION ---
+elif menu == "Add Transaction":
+    st.header("Add Transaction")
+    if not st.session_state.categories:
+        st.warning("Please create a category first.")
+    else:
+        cat_names = list(st.session_state.categories.keys())
+        selected_cat = st.selectbox("Select Category", cat_names)
 
-    # Run tests (uncomment to execute)
-    # run_tests()
+        tab1, tab2 = st.tabs(["Deposit", "Withdraw"])
 
-    # Export to CSV example
-    # csv_output = export_to_csv(food, "food_ledger.csv")
-    # print(csv_output)
+        with tab1:
+            dep_amount = st.number_input("Amount", min_value=0.0, step=0.01, key="dep")
+            dep_desc = st.text_input("Description", key="dep_desc")
+            if st.button("Deposit"):
+                st.session_state.categories[selected_cat].deposit(dep_amount, dep_desc)
+                st.success(f"Deposited ${dep_amount:.2f} to {selected_cat}")
+                st.rerun()
+
+        with tab2:
+            wd_amount = st.number_input("Amount", min_value=0.0, step=0.01, key="wd")
+            wd_desc = st.text_input("Description", key="wd_desc")
+            if st.button("Withdraw"):
+                success = st.session_state.categories[selected_cat].withdraw(wd_amount, wd_desc)
+                if success:
+                    st.success(f"Withdrew ${wd_amount:.2f} from {selected_cat}")
+                    st.rerun()
+                else:
+                    st.error("Insufficient funds!")
+
+# --- VIEW REPORTS ---
+elif menu == "View Reports":
+    st.header("Reports")
+    if not st.session_state.categories:
+        st.info("No data available.")
+    else:
+        # Ledger View
+        selected_cat = st.selectbox("View Ledger for", list(st.session_state.categories.keys()))
+        cat = st.session_state.categories[selected_cat]
+
+        st.subheader(f"{selected_cat} Ledger")
+        if cat.ledger:
+            st.dataframe(cat.ledger, use_container_width=True)
+            st.metric("Current Balance", f"${cat.get_balance():.2f}")
+        else:
+            st.write("No transactions yet.")
+
+        st.divider()
+
+        # ASCII Chart View
+        st.subheader("Spending Chart (ASCII)")
+        chart_data = create_spend_chart(list(st.session_state.categories.values()))
+        st.code(chart_data, language="text")
+
+# --- SAVE/LOAD ---
+elif menu == "Save/Load Data":
+    st.header("Data Management")
+    st.write("Streamlit resets memory on refresh. Save your data to keep it!")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Save to JSON"):
+            save_data(st.session_state.categories)
+            st.success("Data saved to budget_data.json")
+    with col2:
+        if st.button("📂 Load from JSON"):
+            st.session_state.categories = load_data()
+            st.success("Data loaded!")
+            st.rerun()
+
+    if st.button("🗑️ Reset All Data"):
+        st.session_state.categories = {}
+        st.success("All data cleared.")
+        st.rerun()
