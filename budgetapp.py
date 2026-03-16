@@ -6,11 +6,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Union
 import os
 
-
-# ==========================================
-# 1. CATEGORY CLASS
-# ==========================================
-
 class Category:
     def __init__(self, name: str):
         self.name = name
@@ -63,11 +58,6 @@ class Category:
         cat._balance = data['_balance']
         return cat
 
-
-# ==========================================
-# 2. HELPER FUNCTIONS
-# ==========================================
-
 def create_spend_chart(categories: List[Category]) -> str:
     """Original ASCII chart function"""
     if not categories:
@@ -108,11 +98,6 @@ def load_data() -> Dict[str, Category]:
         return {name: Category.from_dict(cat_data) for name, cat_data in data.items()}
     except FileNotFoundError:
         return {}
-
-
-# ==========================================
-# 3. STREAMLIT UI
-# ==========================================
 
 st.set_page_config(
     page_title="Budget App",
@@ -158,20 +143,15 @@ with st.sidebar:
     st.divider()
     st.caption(f"📱 {len(st.session_state.categories)} categories")
 
-# ==========================================
-# DASHBOARD
-# ==========================================
 if menu == "Dashboard":
     st.header("📊 Dashboard")
 
     if not st.session_state.categories:
         st.info("👆 Tap menu to add your first category!")
     else:
-        # ✅ FIXED: Default dates always set
         start_date = datetime.now() - timedelta(days=30)
         end_date = datetime.now()
 
-        # Date Filter in expander (no else clause)
         with st.expander("📅 Filter by Date Range", expanded=False):
             col1, col2 = st.columns(2)
             with col1:
@@ -180,7 +160,6 @@ if menu == "Dashboard":
                 end_date = st.date_input("To", value=end_date)
             st.button("Apply Filter", use_container_width=True)
 
-        # Calculate metrics
         total_balance = sum(cat.get_balance() for cat in st.session_state.categories.values())
 
         total_spent = 0
@@ -244,9 +223,6 @@ if menu == "Dashboard":
         else:
             st.write("No transactions in this period.")
 
-# ==========================================
-# ADD CATEGORY
-# ==========================================
 elif menu == "Add Category":
     st.header("📁 New Category")
 
@@ -274,9 +250,6 @@ elif menu == "Add Category":
         for name in st.session_state.categories.keys():
             st.write(f"• {name}")
 
-# ==========================================
-# ADD TRANSACTION
-# ==========================================
 elif menu == "Add Transaction":
     st.header("💸 Transaction")
 
@@ -331,9 +304,6 @@ elif menu == "Add Transaction":
             else:
                 st.info("Need 2+ categories for transfers")
 
-# ==========================================
-# VIEW REPORTS
-# ==========================================
 elif menu == "View Reports":
     st.header("📈 Reports")
 
@@ -444,9 +414,6 @@ elif menu == "View Reports":
             else:
                 st.write("No transactions in this period.")
 
-# ==========================================
-# SAVE/LOAD DATA
-# ==========================================
 elif menu == "Save/Load Data":
     st.header("💾 Data")
 
